@@ -5,11 +5,13 @@ import uvicorn
 import os
 import sys
 
-# Ensure relative imports work if run directly
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Ensure root directory is in path
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT_DIR not in sys.path:
+    sys.path.append(ROOT_DIR)
 
-from data.storage import load_jobs
-from matcher.embedding_matcher import FaissMatcher
+from core.legacy_storage import load_jobs
+from core.embedding_matcher import FaissMatcher
 
 app = FastAPI(title="CareerOS API", description="FastAPI interface for CareerOS AI Matcher")
 

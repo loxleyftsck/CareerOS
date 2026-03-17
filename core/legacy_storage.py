@@ -1,7 +1,8 @@
 import json
 import os
 
-DB_FILE = 'careeros_db.json'
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_FILE = os.path.join(PROJECT_ROOT, 'data', 'careeros_db.json')
 
 def save_jobs(jobs):
     data = []

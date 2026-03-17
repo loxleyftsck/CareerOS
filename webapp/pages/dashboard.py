@@ -3,8 +3,8 @@ pages/dashboard.py — CareerOS Home Dashboard
 """
 
 import streamlit as st
-import db
-import clawbot
+from core import db
+from agents import clawbot
 
 st.title("🚀 CareerOS")
 st.markdown("##### *AI-powered job matching engine — find your next role faster*")

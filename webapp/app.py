@@ -3,8 +3,15 @@ app.py — CareerOS Entry Point
 Run: streamlit run app.py
 """
 
+import sys
+import os
 import streamlit as st
-from db import init_db
+
+# Add project root to path
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(PROJECT_ROOT)
+
+from core.db import init_db
 
 st.set_page_config(
     page_title="CareerOS",

@@ -5,13 +5,11 @@ Displays scored, ranked job cards with breakdown and feedback buttons.
 
 import streamlit as st
 import plotly.graph_objects as go
-import db
-import antigravity
-import rl_engine
+from core import db, antigravity, rl_engine
 
 # Try to import embedder (needs sentence-transformers installed)
 try:
-    import embedder
+    from utils import embedder
     EMBEDDINGS_AVAILABLE = True
 except Exception:
     EMBEDDINGS_AVAILABLE = False

@@ -2,12 +2,14 @@ import argparse
 import sys
 import os
 
-# Ensure relative imports work if run directly
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Ensure root directory is in path
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT_DIR not in sys.path:
+    sys.path.append(ROOT_DIR)
 
-from scraper.playwright_scraper import run_scraper
-from matcher.embedding_matcher import FaissMatcher
-from data.storage import save_jobs, load_jobs
+from agents.playwright_scraper import run_scraper
+from core.embedding_matcher import FaissMatcher
+from core.legacy_storage import save_jobs, load_jobs
 
 def main():
     parser = argparse.ArgumentParser(description="CareerOS CLI - AI Job Matcher")

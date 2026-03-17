@@ -6,7 +6,15 @@ Phase 2: Semi-auto scraper for Glints public pages
 
 from typing import List, Dict, Optional
 import re
-import db
+import sys
+import os
+
+# Ensure we can find the core module
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from core import db
+from utils import logging_util
+logger = logging_util.get_logger(__name__)
 
 # ── Mock Dataset (Phase 1) ────────────────────────────────────────────────────
 

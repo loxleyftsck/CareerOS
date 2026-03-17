@@ -3,8 +3,8 @@ pages/add_jobs.py — Job Ingestion: manual paste, quick form, or Clawbot search
 """
 
 import streamlit as st
-import db
-import clawbot
+from core import db
+from agents import clawbot
 
 st.title("📥 Add Jobs")
 st.caption("Add jobs by pasting a description, filling the form, or running Clawbot.")

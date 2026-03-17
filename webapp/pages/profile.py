@@ -3,8 +3,8 @@ pages/profile.py — User Profile Builder
 """
 
 import streamlit as st
-import db
-import cv_parser
+from core import db
+from agents import cv_parser
 
 st.title("👤 My Profile")
 st.caption("Fill this manually, or upload your CV to auto-fill.")

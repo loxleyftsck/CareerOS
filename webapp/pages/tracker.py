@@ -4,7 +4,7 @@ Statuses: new → saved → applied → interview → offer / rejected
 """
 
 import streamlit as st
-import db
+from core import db
 
 st.title("📋 Job Tracker")
 st.caption("Track every application through the pipeline. Click buttons to move jobs between stages.")
