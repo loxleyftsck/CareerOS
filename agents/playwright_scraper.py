@@ -29,6 +29,7 @@ DEFAULT_BOARDS = [
     )
 ]
 
+@logging_util.time_it
 async def scrape_site(p, config: JobBoardConfig, keyword: str, location: str, limit: int):
     browser = await p.chromium.launch(headless=True)
     context = await browser.new_context(user_agent=random.choice(USER_AGENTS))
@@ -67,6 +68,7 @@ async def scrape_site(p, config: JobBoardConfig, keyword: str, location: str, li
         await browser.close()
     return jobs
 
+@logging_util.time_it
 async def scrape_all(keyword: str, location: str, limit: int = 5):
     all_jobs = []
     async with async_playwright() as p:

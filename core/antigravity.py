@@ -5,6 +5,9 @@ Weighted multi-factor analysis: 50% skill / 20% exp / 15% location / 15% growth
 
 from typing import Dict, List, Optional
 import numpy as np
+from utils import logging_util
+
+logger = logging_util.get_logger(__name__)
 
 # ── Company Prestige Map (Indonesian tech ecosystem) ─────────────────────────
 COMPANY_PRESTIGE: Dict[str, float] = {
@@ -220,6 +223,7 @@ def build_reasoning(
 
 # ── Main API ──────────────────────────────────────────────────────────────────
 
+@logging_util.time_it
 def score_job(
     profile: Dict,
     job: Dict,
@@ -288,6 +292,7 @@ def score_job(
     }
 
 
+@logging_util.time_it
 def rank_jobs(
     profile: Dict,
     jobs: List[Dict],

@@ -1,6 +1,7 @@
 # CareerOS - Structured AI Job Matching System
 
 ## 📂 Project Architecture
+
 The project has been refactored into a modular, production-grade structure:
 
 - **/core**: Main logic engines (`antigravity.py`, `db.py`, `rl_engine.py`, `embedding_matcher.py`).
@@ -15,6 +16,7 @@ The project has been refactored into a modular, production-grade structure:
 ## 🚀 Getting Started
 
 ### 1. Installation
+
 ```bash
 pip install -r webapp/requirements.txt
 python -m playwright install chromium
@@ -22,11 +24,13 @@ python -m spacy download en_core_web_sm
 ```
 
 ### 2. Run Graphical Interface (Streamlit)
+
 ```bash
 python -m streamlit run webapp/app.py
 ```
 
 ### 3. Run Command Line Interface (v2)
+
 ```bash
 # Scrape
 python cli/main.py --scrape
@@ -35,11 +39,13 @@ python cli/main.py --profile "Your profile text here"
 ```
 
 ### 4. Run System Health Check
+
 ```bash
 python tests/diagnostic.py
 ```
 
 ## 🛠 Tech Stack
+
 - **AI**: SentenceTransformers (bge-small), FAISS.
 - **Scraping**: Playwright, BeautifulSoup.
 - **Backend**: FastAPI, SQLite.
