@@ -1,0 +1,100 @@
+CareerOS
+AI-Powered Career Matching Agent
+Blueprint Document  |  v1.0  |  2025
+1. Executive Summary
+CareerOS is an intelligent AI-powered job matching agent that bridges the gap between job seekers and opportunities using semantic understanding, reinforcement learning, and explainable AI. Unlike conventional job boards, CareerOS reasons about fit — not just keyword overlap.
+To become the most precise and transparent AI career agent in the market — one that doesn't just find jobs, but understands careers.
+Core Value Proposition
+2. System Architecture
+2.1 High-Level Architecture
+CareerOS is designed as a dual-agent modular system. The architecture separates reasoning from execution to maximize reliability, scalability, and maintainability.
+2.2 Dual-Agent Role Definition
+2.3 Matching Engine
+The Matching Engine is the core of CareerOS. It combines semantic embeddings with a rule-based weighted scoring system:
+3. Development Roadmap
+The CareerOS build is structured across 8 weeks in 4 phases, moving from foundational parsing to full RL-enhanced recommendation.
+3.1 Milestone Checklist — Phase 1 & 2
+Set up FastAPI backend with CV upload endpoint
+Implement PDF/DOCX CV parser using spaCy NLP
+Extract: skill vector, experience level, domain tags
+Build manual seed dataset (50+ job postings, normalized JSON)
+Implement Clawbot Playwright scraper for Glints and Indeed
+Integrate embedding model (BGE or OpenAI text-embedding-3-small)
+Build FAISS vector index for efficient job similarity search
+Calculate and return top-N match scores
+3.2 Milestone Checklist — Phase 3 & 4
+Build Antigravity reasoning agent with structured output
+Implement explainability: skill match breakdown, gap analysis
+Build React frontend: upload CV, view recommendations
+Add Like / Dislike / Apply feedback UI
+Implement simple Q-Learning reward model (state-action-reward)
+Adaptive weight adjustment based on feedback history
+Deploy to cloud (Railway / Render / VPS)
+End-to-end testing and performance benchmarking
+4. Technology Stack
+5. System Boundaries & Constraints
+5.1 In Scope
+CV parsing and profile extraction (PDF and DOCX formats)
+Job scraping from: LinkedIn Jobs, Glints, Kalibrr, Indeed
+Semantic matching via embedding cosine similarity
+Explainable job recommendations with match score and reasoning
+Basic Q-Learning feedback loop (like/dislike/apply signals)
+Web-based UI for CV upload and recommendation viewing
+REST API for all agent operations
+5.2 Out of Scope (v1.0)
+Direct job application automation
+Real-time recruiter messaging or outreach
+Resume generation or optimization
+Interview preparation or coaching
+Salary negotiation guidance
+Multi-language support beyond Bahasa Indonesia and English
+5.3 Technical Constraints
+5.4 Legal & Ethical Boundaries
+Scraping will respect robots.txt and platform Terms of Service
+No storage of personally identifiable data beyond session scope
+Job data cached max 24 hours before re-scrape
+No automated applications without explicit user confirmation
+AI recommendations are advisory only — final decision belongs to user
+6. Performance Metrics (KPIs)
+6.1 Matching Quality Metrics
+6.2 System Performance Metrics
+6.3 User Engagement Metrics
+6.4 RL / Feedback Loop Metrics
+7. Inversion Learning Analysis
+Inversion Learning asks: what would guarantee failure? By mapping the failure modes first, we design the system to avoid them. This section identifies the critical anti-patterns CareerOS must guard against.
+7.1 What Would Make CareerOS Fail?
+7.2 Anti-Patterns to Actively Avoid
+Never rely on keyword overlap alone — semantic understanding is non-negotiable
+Never recommend without a reason — black-box output destroys user trust
+Never scrape aggressively — one ban ends your data supply
+Never optimize for engagement over fit — short-term clicks hurt long-term retention
+Never ignore feedback signals — the RL loop is your competitive moat
+Never hard-code weights — they must be learnable and user-specific
+Never let the cold-start problem deliver random results — structured onboarding is required
+7.3 Inversion → Design Principles
+Each failure mode above directly informed an architectural decision:
+7.4 Second-Order Risks
+If Antigravity over-explains: Users ignore verbose reasoning. Keep output to max 5 bullet points.
+If feedback loop is too aggressive: Early bad data poisons the model. Use exploration-exploitation balance (epsilon-greedy).
+If scraping sources collapse: Single source dependency. Maintain minimum 3 platform scrapers active simultaneously.
+If embedding model is too generic: Poor domain fit for Indonesian job market. Fine-tune or use multilingual model.
+8. README — Developer Guide
+8.1 Project Structure
+8.2 Quick Start
+Clone repository: git clone https://github.com/your-org/careeros
+Install Python deps: pip install -r requirements.txt
+Copy environment config: cp .env.example .env
+Configure OPENAI_API_KEY or set EMBEDDING_MODEL=bge-m3-local
+Start services: docker-compose up -d (PostgreSQL + Redis)
+Run migrations: alembic upgrade head
+Start API server: uvicorn careeros.api.main:app --reload
+Start frontend: cd frontend && npm install && npm run dev
+Run initial job scrape: python scripts/run_scraper.py --all
+Navigate to http://localhost:5173 and upload a CV to test
+8.3 Key Environment Variables
+8.4 System Prompts
+Antigravity — Reasoning Agent
+Clawbot — Scraping Agent
+9. Risk Register
+CareerOS — Blueprint v1.0
+Built with Antigravity (Brain) + Clawbot (Execution) — an AI career agent that reasons, not just retrieves.
