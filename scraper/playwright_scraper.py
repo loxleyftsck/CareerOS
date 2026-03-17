@@ -1,6 +1,15 @@
+import sys
+import os
 import asyncio
 import random
 from playwright.async_api import async_playwright
+
+# Add project root and backend to path
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.append(PROJECT_ROOT)
+    sys.path.append(os.path.join(PROJECT_ROOT, "backend"))
+
 from utils import logging_util
 
 logger = logging_util.get_logger("PlaywrightScraper")

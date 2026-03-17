@@ -1,10 +1,11 @@
 import sys
 import os
 
-# Ensure root is in path
+# Ensure root and backend are in path
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
     sys.path.append(ROOT_DIR)
+    sys.path.append(os.path.join(ROOT_DIR, "backend"))
 
 from core import db, antigravity
 from agents import clawbot, cv_parser

@@ -8,8 +8,8 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-PROJECT_ROOT = Path(__file__).parent.parent
-DB_PATH = PROJECT_ROOT / "data" / "careeros.db"
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+DB_PATH = PROJECT_ROOT / "storage" / "careeros.db"
 
 
 def get_conn() -> sqlite3.Connection:

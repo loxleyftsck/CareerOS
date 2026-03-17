@@ -7,9 +7,10 @@ import sys
 import os
 import streamlit as st
 
-# Add project root to path
+# Add project root and backend to path
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(PROJECT_ROOT)
+sys.path.append(os.path.join(PROJECT_ROOT, "backend"))
 
 from core.db import init_db
 
