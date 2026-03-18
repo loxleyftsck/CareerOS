@@ -2,6 +2,8 @@ from typing import List, Dict, Any, Optional
 from storage import db
 from engine.scoring import fast_scoring
 from engine.rl.custom_rl import engine as rl_engine
+from engine.memory.short_term import session_memory
+from engine.memory.long_term import career_memory
 from scraper.playwright_scraper import run_scraper, run_scraper_streaming
 from utils import logging_util
 
@@ -21,6 +23,7 @@ class Orchestrator:
         Main execution flow.
         """
         logger.info(f"START scout_and_rank for '{keyword}'")
+        session_memory.record("search", {"keyword": keyword, "location": location})
         
         # 1. Cache Check (Energy Optimization)
         energy_saved = False
@@ -105,6 +108,12 @@ class Orchestrator:
         
         final_ranked = rl_engine.choose_action(top_candidates, profile)
         
+        # Record decision in memory
+        for r in final_ranked[:3]:
+            perf = career_memory.get_cluster_performance(r["cluster"])
+            logger.info(f"MEMORY: Cluster '{r['cluster']}' Success Rate: {perf['success_rate']:.2f}")
+            session_memory.record("recommendation", {"job_id": r["job_id"], "cluster": r["cluster"]})
+
         return final_ranked[:limit]
 
 # Singleton instance
