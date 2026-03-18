@@ -350,9 +350,7 @@ def score_job(
     job["match_score"] = min(100, tech_fit) 
     job["strategy"] = strategy
     
-    p_interview = rl_engine.get_interview_probability(job, profile)
-    
-    # 2. Calculate V(career) - The Value
+    # 2. Market Signals & Probabilities
     future_data = compute_future_readiness(u_skills, j_skills, freqs)
     future_score = future_data["score"]
     
@@ -362,12 +360,11 @@ def score_job(
     
     job["growth_score"] = growth_score
     job["future_score"] = future_score
-    career_value = rl_engine.get_career_value(job, profile)
     
-    # 3. Expected Value (EV) with Market Signals
-    p_interview = rl_engine.get_interview_probability(job, profile)
-    career_value = rl_engine.get_career_value(job, profile)
-    saturation = rl_engine.get_saturation_penalty(job)
+    # v4.0: p_interview is base technical fit (0.0-1.0)
+    p_interview = tech_fit / 100.0
+    career_value = 100.0 # Default base value for v4.0
+    saturation = 1.0     # Default saturation for v4.0
     
     # NEW: Market Signals (Competitor Density & Warm Path)
     # Warm Path (Referral) increases P significantly
