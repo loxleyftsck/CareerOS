@@ -71,18 +71,24 @@ class CrispDecisionEngine:
             state.adaptive_buffer -= 0.01 # slow decay
 
     def _should_switch(self, state: DecisionState, current_val: float, val_low: float, val_high: float, ascending: bool = True) -> Optional[str]:
+        # Strict v4.0 Hysteresis Logic (±10% from state.adaptive_buffer)
         buffer = state.adaptive_buffer
         
         if ascending:
+            # Transition A -> B
             if state.last_method == "A" and current_val > val_low * (1 + buffer):
                 return "B"
+            # Transition B -> A
             if state.last_method == "B" and current_val < val_low * (1 - buffer):
                 return "A"
+            # Transition B -> C
             if state.last_method == "B" and current_val > val_high * (1 + buffer):
                 return "C"
+            # Transition C -> B
             if state.last_method == "C" and current_val < val_high * (1 - buffer):
                 return "B"
         else:
+            # Inverse logic for descending axes (like radar lifespan)
             if state.last_method == "A" and current_val < val_low * (1 - buffer):
                 return "B"
             if state.last_method == "B" and current_val > val_low * (1 + buffer):
@@ -95,24 +101,35 @@ class CrispDecisionEngine:
         return None
 
     def decide_matching(self, job_count: int, recall_score: float = 1.0) -> str:
+        """v4.0 API: Hysteresis-aware matching strategy decision."""
         state = self._get_state("matching", "A")
-        is_critical = recall_score < self.min_recall
         
+        # Check Cooldown (Strict 60s)
+        if (time.time() - state.last_switch_time) < self.min_switch_interval:
+            return state.last_method
+
+        is_critical = recall_score < self.min_recall
         if is_critical:
             new_method = "C"
-            reason = "CRITICAL_DEGRADATION: Recall below threshold"
+            reason = "CRITICAL_DEGRADATION"
         else:
             new_method = self._should_switch(
                 state, job_count, 
                 self.thresholds["matching_volume"]["ab"],
                 self.thresholds["matching_volume"]["bc"]
             ) or state.last_method
-            reason = "Context axis threshold"
+            reason = "Threshold check"
 
         return self._finalize(state, new_method, job_count, is_critical, reason)
 
     def decide_memory(self, history_count: int) -> str:
+        """v4.0 API: Hysteresis-aware memory strategy decision."""
         state = self._get_state("memory", "A")
+        
+        # Check Cooldown (Strict 60s)
+        if (time.time() - state.last_switch_time) < self.min_switch_interval:
+            return state.last_method
+
         new_method = self._should_switch(
             state, history_count,
             self.thresholds["memory_depth"]["ab"],
