@@ -102,3 +102,24 @@ async def scrape_all(keyword: str, location: str, limit: int = 5):
 
 def run_scraper(keyword: str, location: str, limit: int = 5):
     return asyncio.run(scrape_all(keyword, location, limit))
+
+# Streaming stub stays simple
+async def scrape_all_streaming(keyword: str, location: str, limit: int = 5):
+    all_jobs = await scrape_all(keyword, location, limit)
+    for j in all_jobs:
+        yield j
+
+def run_scraper_streaming(keyword: str, location: str, limit: int = 5):
+    """Sync generator wrapper."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    gen = scrape_all_streaming(keyword, location, limit)
+    try:
+        while True:
+            try:
+                job = loop.run_until_complete(gen.__anext__())
+                yield job
+            except StopAsyncIteration:
+                break
+    finally:
+        loop.close()
