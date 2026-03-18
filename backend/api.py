@@ -12,9 +12,13 @@ if ROOT_DIR not in sys.path:
     sys.path.append(ROOT_DIR)
     sys.path.append(os.path.join(ROOT_DIR, "backend"))
 
-from core import db, antigravity
+from storage import db
+from engine.scoring import fast_scoring as antigravity
 from scraper.playwright_scraper import run_scraper
+from agents.cv_parser import parser as cv_parser
 from utils import logging_util
+from fastapi import File, UploadFile
+import shutil
 
 logger = logging_util.get_logger("BackendAPI")
 
@@ -46,38 +50,29 @@ scraping_status = {"status": "idle", "last_run": None, "count": 0}
 def health():
     return {"status": "healthy", "database": db.DB_PATH.name}
 
-@app.post("/scrape", summary="Trigger live Playwright scraping")
+from engine.orchestrator import conductor
+
+@app.post("/scrape", summary="Trigger live Playwright scraping (Energy Optimized)")
 async def trigger_scrape(req: ScrapeRequest):
     global scraping_status
     scraping_status["status"] = "running"
     try:
-        logger.info(f"Triggering live scrape for {req.keyword} in {req.location}")
-        jobs = run_scraper(req.keyword, req.location, req.limit)
+        # Load profile for context
+        profile = db.get_profile() or {"skills": [], "experience_years": 0}
         
-        # Save to DB
-        new_count = 0
-        for job in jobs:
-            db.insert_job(job)
-            new_count += 1
-            
+        logger.info(f"Orchestrating scout for {req.keyword}...")
+        jobs = conductor.scout_and_rank(profile, req.keyword, req.location, req.limit)
+        
         scraping_status = {
             "status": "completed",
             "last_run": str(logging_util.datetime.now()),
-            "count": new_count
+            "count": len(jobs)
         }
-        return {"message": "Scraping completed", "jobs_found": new_count, "results": jobs}
+        return {"message": "Success", "jobs_found": len(jobs), "results": jobs}
     except Exception as e:
         scraping_status["status"] = "failed"
-        logger.error(f"Scrape failed: {e}")
+        logger.error(f"Orchestration failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/scrape/status")
-def get_scrape_status():
-    return scraping_status
-
-@app.get("/jobs")
-def list_jobs(status: Optional[str] = None):
-    return db.get_all_jobs(status_filter=status)
 
 @app.post("/match")
 def match_all(profile: ProfileRequest):
@@ -85,9 +80,72 @@ def match_all(profile: ProfileRequest):
     if not jobs:
         return {"matches": []}
     
-    # Run ranking engine
-    ranked = antigravity.rank_jobs(profile.model_dump(), jobs)
+    # Run Orchestrator's process logic directly
+    ranked = conductor._process_jobs(jobs, profile.model_dump())
     return {"matches": ranked}
+
+class FeedbackRequest(BaseModel):
+    job_id: int
+    action: str
+    reward: float
+
+@app.post("/feedback")
+def record_feedback(req: FeedbackRequest):
+    job = db.get_job(req.job_id)
+    profile = db.get_profile()
+    if not job or not profile:
+        raise HTTPException(status_code=404, detail="Job or Profile not found")
+        
+    db.record_feedback(req.job_id, req.action, req.reward)
+    conductor.rl_engine.update(job, profile, req.action, req.reward)
+    return {"message": "Feedback recorded and RL engine updated"}
+
+from fastapi.responses import StreamingResponse
+import json
+
+@app.get("/scrape/stream")
+def stream_scrape(keyword: str, location: str = "Remote", limit: int = 5):
+    """Event-stream for live scraper results."""
+    profile = db.get_profile() or {"skills": [], "experience_years": 0}
+    
+    def generate():
+        for job in conductor.scout_streaming(profile, keyword, location, limit):
+            yield f"data: {json.dumps(job)}\n\n"
+            
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+@app.post("/profile/upload", summary="Upload and parse CV (PDF/DOCX)")
+async def upload_cv(file: UploadFile = File(...)):
+    # Create temp directory
+    temp_dir = os.path.join(ROOT_DIR, "data", "uploads")
+    os.makedirs(temp_dir, exist_ok=True)
+    
+    file_path = os.path.join(temp_dir, file.filename)
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+        
+    try:
+        profile_data = cv_parser.parse(file_path)
+        
+        # Save to DB
+        db.save_profile({
+            "name": profile_data["name"],
+            "skills": profile_data["skills"],
+            "experience_years": profile_data["experience_years"],
+            "raw_cv_text": profile_data["raw_text"]
+        })
+        
+        return {
+            "message": "CV uploaded and parsed successfully",
+            "profile": profile_data
+        }
+    except Exception as e:
+        logger.error(f"CV Parsing failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        # Optionally delete temp file
+        # if os.path.exists(file_path): os.remove(file_path)
+        pass
 
 if __name__ == "__main__":
     db.init_db()
