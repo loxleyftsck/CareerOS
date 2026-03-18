@@ -21,7 +21,8 @@ class CVParser:
         "python", "javascript", "react", "node", "docker", "kubernetes", 
         "aws", "gcp", "azure", "sql", "postgresql", "fastapi", "flask",
         "tensorflow", "pytorch", "machine learning", "ai", "java", "c++",
-        "go", "rust", "typescript", "vue", "angular", "ci/cd"
+        "go", "rust", "typescript", "vue", "angular", "ci/cd",
+        "laravel", "php", "flutter", "dart", "kotlin", "swift", "terraform"
     ]
 
     def extract_text_from_pdf(self, file_path: str) -> str:
@@ -49,28 +50,48 @@ class CVParser:
     def extract_info(self, text: str) -> Dict[str, Any]:
         profile = {
             "name": "Extracted User",
+            "email": None,
+            "phone": None,
             "skills": [],
-            "experience_years": 0,
+            "experience_years": 0.0,
+            "location": "Jakarta, Indonesia", # Default
             "raw_text": text
         }
 
-        # 1. Simple Keyword Match for Skills
         text_lower = text.lower()
+        
+        # 1. Contact Info Extraction
+        email_match = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", text)
+        if email_match: profile["email"] = email_match.group(0)
+        
+        phone_match = re.search(r"(\+62|08)\d{9,12}", text.replace(" ", ""))
+        if phone_match: profile["phone"] = phone_match.group(0)
+
+        # 2. Skills Keyword Match
         for skill in self.COMMON_SKILLS:
             if re.search(rf"\b{re.escape(skill)}\b", text_lower):
                 profile["skills"].append(skill.capitalize())
 
-        # 2. Heuristic for Experience Years
-        # Look for numbers near "years" and "experience"
-        exp_match = re.search(r"(\d+)\+?\s*years?\s*of?\s*experience", text_lower)
+        # 3. Enhanced Experience Years (Handling years + months)
+        # Match "X years" or "X years Y months"
+        exp_match = re.search(r"(\d+)\s*years?(\s*(\d+)\s*months?)?", text_lower)
         if exp_match:
-            profile["experience_years"] = float(exp_match.group(1))
+            years = float(exp_match.group(1))
+            months = float(exp_match.group(3)) if exp_match.group(3) else 0
+            profile["experience_years"] = years + (months / 12.0)
         
-        # 3. Name extraction (Very basic heuristic)
+        # 4. Location Detection
+        cities = ["jakarta", "bandung", "surabaya", "yogyakarta", "medan", "bali"]
+        for city in cities:
+            if city in text_lower:
+                profile["location"] = city.capitalize()
+                break
+
+        # 5. Name extraction
         if nlp:
-            doc = nlp(text[:500]) # Only check first 500 chars
+            doc = nlp(text[:500])
             for ent in doc.ents:
-                if ent.label_ == "PERSON":
+                if ent.label_ == "PERSON" and len(ent.text.split()) > 1:
                     profile["name"] = ent.text
                     break
 
