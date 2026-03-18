@@ -1,53 +1,52 @@
-# CareerOS - Structured AI Job Matching System
+# CareerOS: AI-Powered Career Matching Agent
 
-## 📂 Project Architecture
+CareerOS is an intelligent job matching and career development agent that leverages semantic understanding, reinforcement learning, and explainable AI to bridge the gap between job seekers and their ideal opportunities.
 
-The project has been refactored into a modular, production-grade structure:
+## 🎯 Vision
+To become the most precise and transparent AI career agent—one that doesn't just find jobs, but understands careers.
 
-- **/core**: Main logic engines (`antigravity.py`, `db.py`, `rl_engine.py`, `embedding_matcher.py`).
-- **/agents**: Collection of AI agents (`clawbot.py`, `cv_parser.py`, `playwright_scraper.py`).
-- **/utils**: Helper modules (`embedder.py`, `logging_util.py`).
-- **/webapp**: Streamlit-based graphical user interface.
-- **/cli**: Command-line interface and FastAPI server.
-- **/data**: Centralized database storage (`careeros.db`, `careeros_db.json`).
-- **/tests**: Validation and diagnostic suites.
-- **/logs**: Persistent runtime logs.
+## 🚀 Development Roadmap
 
-## 🚀 Getting Started
+### Phase 1: R&D (Research & Experiment)
+*   Semantic kernel prototypes.
+*   RL policy exploration for job matching.
+*   High-performance scoring engines (Rust + Python).
 
-### 1. Installation
+### Phase 2: Development (Dev)
+*   Modular engine implementation.
+*   Autonomous scrapers (Clawbot).
+*   FastAPI backend & React frontend integration.
 
-```bash
-pip install -r webapp/requirements.txt
-python -m playwright install chromium
-python -m spacy download en_core_web_sm
-```
+### Phase 3: Staging (Pre-release)
+*   Integration testing & performance tuning.
+*   RL feedback loop calibration.
+*   Global market pulse integration.
 
-### 2. Run Graphical Interface (Streamlit)
+### Phase 4: Production (Stable)
+*   Scalable deployment.
+*   Continuous monitoring & RL recalibration.
 
-```bash
-python -m streamlit run webapp/app.py
-```
+## 🌳 Branching Strategy
+*   `main`: Production-ready code (stable).
+*   `staging`: Integration and pre-release testing.
+*   `dev`: Active development and feature integration.
+*   `rnd/*`: Experimental features and researchers' sandbox.
+*   `feature/*`: New modular components.
+*   `hotfix/*`: Emergency patches for the production line.
 
-### 3. Run Command Line Interface (v2)
+## 🧪 Commit Convention
+We follow a structured commit lifecycle:
+- `feat(scope)`: New features.
+- `fix(scope)`: Bug fixes.
+- `chore(scope)`: Setup/configuration.
+- `rnd(scope)`: Experimental changes.
 
-```bash
-# Scrape
-python cli/main.py --scrape
-# Match
-python cli/main.py --profile "Your profile text here"
-```
+Scopes: `(rnd)`, `(dev)`, `(staging)`, `(prod)`.
 
-### 4. Run System Health Check
+## 🛠️ Suggested Tech Stack
+- **Backend**: Python (FastAPI) for agility + Rust (PyO3) for high-performance ranking.
+- **AI/RL Engine**: Custom implementation for maximum control over reward signals.
+- **Storage**: SQLite (Local-first) for portable, high-speed profile & Q-table management.
 
-```bash
-python tests/diagnostic.py
-```
-
-## 🛠 Tech Stack
-
-- **AI**: SentenceTransformers (bge-small), FAISS.
-- **Scraping**: Playwright, BeautifulSoup.
-- **Backend**: FastAPI, SQLite.
-- **UI**: Streamlit.
-- **Logging**: Structured local logging in `/logs`.
+---
+Built with Antigravity & Clawbot.
