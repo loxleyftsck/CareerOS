@@ -247,7 +247,9 @@ def rank_jobs(
     job_embeddings: Optional[Dict[int, np.ndarray]] = None,
     rl_boosts: Optional[Dict[int, float]] = None,
 ) -> List[Dict]:
-    """Rank all jobs by Expected Value (EV)."""
+    """Rank all jobs by Expected Value (EV), with confidence-weighted calibration."""
+    from rnd.score_calibrator import apply_calibration
+
     bulk_rust_scores = {}
     if RUST_AVAILABLE:
         all_j_skills = [j.get("skills_required", []) for j in jobs]
@@ -271,6 +273,8 @@ def rank_jobs(
             precalculated_rust_ratio=bulk_rust_scores.get(job.get("id")),
             context=context
         )
+        # Apply confidence-weighted calibration (v4.0 R&D → Production)
+        apply_calibration(r)
         results.append(r)
     
     for r in results:
