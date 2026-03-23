@@ -14,31 +14,67 @@ from utils import logging_util
 
 logger = logging_util.get_logger("PlaywrightScraper")
 
+from functools import wraps
+
+def async_retry(retries=3, delay=2, backoff=2):
+    """Exponential backoff decorator for async functions."""
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            m_retries, m_delay = retries, delay
+            while m_retries > 1:
+                try:
+                    return await func(*args, **kwargs)
+                except Exception as e:
+                    logger.warning(f"Retrying {func.__name__} due to: {e}. Retries left: {m_retries-1}")
+                    await asyncio.sleep(m_delay)
+                    m_retries -= 1
+                    m_delay *= backoff
+            return await func(*args, **kwargs)
+        return wrapper
+    return decorator
+
+class JobBoardConfig:
+    def __init__(self, name, url, title_selectors, company_selectors, desc_selectors):
+        self.name = name
+        self.url = url
+        # Support both single strings and lists for resilience
+        self.title_selectors = title_selectors if isinstance(title_selectors, list) else [title_selectors]
+        self.company_selectors = company_selectors if isinstance(company_selectors, list) else [company_selectors]
+        self.desc_selectors = desc_selectors if isinstance(desc_selectors, list) else [desc_selectors]
+
+DEFAULT_BOARDS = [
+    JobBoardConfig(
+        "HackerNews",
+        "https://news.ycombinator.com/jobs",
+        [".titleline > a", "td.title > a"],
+        ["span.sitestr", ".comhead"],
+        [".titleline"]
+    ),
+    JobBoardConfig(
+        "Glints",
+        "https://glints.com/id/en/lowongan-kerja",
+        ["h3[class*='JobCardSc__JobTitle']", ".DesignSystemJobCard-module__title___2N_M1"],
+        ["a[class*='JobCardSc__CompanyName']", ".DesignSystemJobCard-module__companyName___3G6H-"],
+        ["div[class*='JobCardSc__JobDescription']"]
+    )
+]
+
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
 ]
 
-class JobBoardConfig:
-    def __init__(self, name, url, title_selector, company_selector, desc_selector):
-        self.name = name
-        self.url = url
-        self.title_selector = title_selector
-        self.company_selector = company_selector
-        self.desc_selector = desc_selector
+async def get_resilient_locator(page, selectors):
+    """Tries multiple selectors until one hits."""
+    for selector in selectors:
+        locator = page.locator(selector)
+        if await locator.count() > 0:
+            return locator
+    return None
 
-DEFAULT_BOARDS = [
-    JobBoardConfig(
-        "HackerNews",
-        "https://news.ycombinator.com/jobs",
-        ".titleline > a",
-        "span.sitestr",  # Mocking company as sitestr if not found
-        ".titleline"
-    )
-]
-
-@logging_util.time_it
+@async_retry(retries=3, delay=5)
 async def scrape_site(p, config: JobBoardConfig, keyword: str, location: str, limit: int):
     browser = await p.chromium.launch(headless=True)
     context = await browser.new_context(user_agent=random.choice(USER_AGENTS))
@@ -47,20 +83,26 @@ async def scrape_site(p, config: JobBoardConfig, keyword: str, location: str, li
     jobs = []
     try:
         logger.info(f"Navigating to {config.name}: {config.url}")
-        await page.goto(config.url, timeout=20000, wait_until="networkidle")
+        # Human-like delay
+        await asyncio.sleep(random.uniform(1, 3))
         
-        titles = await page.locator(config.title_selector).all_inner_texts()
+        await page.goto(config.url, timeout=30000, wait_until="domcontentloaded")
+        
+        # Try to find titles using resilient locators
+        title_locator = await get_resilient_locator(page, config.title_selectors)
+        if not title_locator:
+            raise ValueError(f"No titles found for {config.name} using selectors: {config.title_selectors}")
+            
+        titles = await title_locator.all_inner_texts()
         
         for i in range(min(len(titles), limit)):
             title = titles[i]
-            # Try to find company near the title or fallback
             company = "Tech Company"
-            try:
-                company_elem = page.locator(config.company_selector).nth(i)
-                if await company_elem.count() > 0:
-                    company = await company_elem.inner_text()
-            except:
-                pass
+            
+            # Try resilient company selectors
+            company_locator = await get_resilient_locator(page, [f"{s}:nth-child({i+1})" for s in config.company_selectors])
+            if company_locator:
+                company = await company_locator.first.inner_text()
                 
             jobs.append({
                 "title": title.strip(),
@@ -73,6 +115,7 @@ async def scrape_site(p, config: JobBoardConfig, keyword: str, location: str, li
             
     except Exception as e:
         logger.error(f"Scraping {config.name} failed: {e}")
+        raise # Raise to trigger @async_retry
     finally:
         await browser.close()
     return jobs
