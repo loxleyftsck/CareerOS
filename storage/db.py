@@ -608,3 +608,25 @@ def get_cluster_stats(cluster_id: str) -> Dict[str, int]:
     
     conn.close()
     return {"interviews": interviews, "total_applies": total}
+
+
+def get_cluster_stats_all() -> List[Dict]:
+    """Aggregates cluster performance stats for the heat map report."""
+    conn = get_conn()
+    rows = conn.execute("""
+        SELECT cluster_id,
+               COUNT(*) AS total_applies,
+               SUM(CASE WHEN stage_reached IN ('interview','offer') THEN 1 ELSE 0 END) AS interviews
+        FROM application_outcomes
+        WHERE stage_reached NOT IN ('click')
+        GROUP BY cluster_id
+        ORDER BY interviews DESC
+    """).fetchall()
+    conn.close()
+    result = []
+    for r in rows:
+        d = dict(r)
+        total = d.get("total_applies") or 1
+        d["success_rate"] = round(d.get("interviews", 0) / total, 3)
+        result.append(d)
+    return result
