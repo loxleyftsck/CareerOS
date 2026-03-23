@@ -150,7 +150,9 @@ def score_job(
     
     # 4. Confidence (Data Quality)
     profile_completeness = min(1.0, (len(u_skills) / 10.0 + (1 if profile.get("raw_cv_text") else 0.5)) / 2.0)
-    confidence = (0.4 * profile_completeness) + (0.6 * sample_confidence)
+    # Job specificity: vague jobs (no skills listed) have much lower confidence
+    job_specificity = min(1.0, len(j_skills) / 5.0) if j_skills else 0.3
+    confidence = (0.3 * profile_completeness) + (0.4 * sample_confidence) + (0.3 * job_specificity)
     
     matched = get_matched(u_skills, j_skills)
     gaps = get_gaps(u_skills, j_skills)
