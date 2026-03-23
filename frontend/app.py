@@ -12,7 +12,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(PROJECT_ROOT)
 sys.path.append(os.path.join(PROJECT_ROOT, "backend"))
 
-from core.db import init_db
+from storage.db import init_db
 
 st.set_page_config(
     page_title="CareerOS",
@@ -108,5 +108,23 @@ pg = st.navigation([
     st.Page("pages/add_jobs.py",   title="Add Jobs",         icon="📥"),
     st.Page("pages/results.py",    title="Results & Ranking",icon="🎯"),
     st.Page("pages/tracker.py",    title="Job Tracker",      icon="📋"),
+    st.Page("pages/reports.py",    title="Mission Report",   icon="📊"),
 ])
 pg.run()
+
+# -- Notifications Sidebar ---------------------------------------------------
+try:
+    from storage.db import get_notifications
+    notifications = get_notifications(limit=5)
+    if notifications:
+        with st.sidebar:
+            st.markdown("---")
+            st.markdown(f"**Notifications** `{len(notifications)}`")
+            for n in notifications:
+                ntype = n.get("type", "")
+                icon = {"radar": "👁️", "coaching": "📚", "system": "⚙️"}.get(ntype, "🔔")
+                msg = n.get("message", "")
+                display_msg = msg[:80] + "..." if len(msg) > 80 else msg
+                st.caption(f"{icon} **{n['title']}**\n{display_msg}")
+except Exception:
+    pass

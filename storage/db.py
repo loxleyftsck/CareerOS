@@ -135,7 +135,8 @@ def init_db():
         ("analyses", "p_interview", "REAL DEFAULT 0"),
         ("analyses", "career_value", "REAL DEFAULT 0"),
         ("analyses", "confidence_score", "REAL DEFAULT 0"),
-        ("analyses", "saturation_factor", "REAL DEFAULT 1.0")
+        ("analyses", "saturation_factor", "REAL DEFAULT 1.0"),
+        ("profile", "is_active", "BOOLEAN DEFAULT 0")
     ]
     for table, col, col_type in MIGRATIONS:
         try:
@@ -148,50 +149,122 @@ def init_db():
 
 # ── Profile ──────────────────────────────────────────────────────────────────
 
-def get_profile() -> Optional[Dict]:
+def get_profile(profile_id: Optional[int] = None) -> Optional[Dict]:
     conn = get_conn()
-    row = conn.execute("SELECT * FROM profile WHERE id = 1").fetchone()
+    if profile_id is not None:
+        row = conn.execute("SELECT * FROM profile WHERE id = ?", (profile_id,)).fetchone()
+    else:
+        row = conn.execute("SELECT * FROM profile WHERE is_active = 1 ORDER BY updated_at DESC LIMIT 1").fetchone()
+        if not row:
+            # Fallback to the most recently updated profile if none are explicitly set as active
+            row = conn.execute("SELECT * FROM profile ORDER BY updated_at DESC LIMIT 1").fetchone()
+            
     conn.close()
     if not row:
         return None
     d = dict(row)
-    d["skills"] = json.loads(d["skills"])
-    d["target_roles"] = json.loads(d["target_roles"])
+    d["skills"] = json.loads(d.get("skills", "[]"))
+    d["target_roles"] = json.loads(d.get("target_roles", "[]"))
     return d
 
 
-def save_profile(data: Dict):
+def save_profile(data: Dict) -> int:
     conn = get_conn()
-    conn.execute("""
-        INSERT INTO profile (id, name, skills, experience_years, target_roles,
-                             location_pref, salary_min, career_goals, updated_at)
-        VALUES (1, :name, :skills, :experience_years, :target_roles,
-                :location_pref, :salary_min, :career_goals, CURRENT_TIMESTAMP)
-        ON CONFLICT(id) DO UPDATE SET
-            name = excluded.name,
-            skills = excluded.skills,
-            experience_years = excluded.experience_years,
-            target_roles = excluded.target_roles,
-            location_pref = excluded.location_pref,
-            salary_min = excluded.salary_min,
-            career_goals = excluded.career_goals,
-            raw_cv_text = excluded.raw_cv_text,
-            updated_at = CURRENT_TIMESTAMP
-    """, {
-        "name": data.get("name", "User"),
-        "skills": json.dumps(data.get("skills", [])),
-        "experience_years": data.get("experience_years", 0),
-        "target_roles": json.dumps(data.get("target_roles", [])),
-        "location_pref": data.get("location_pref", "Jakarta"),
-        "salary_min": data.get("salary_min", 0),
-        "career_goals": data.get("career_goals", ""),
-        "raw_cv_text": data.get("raw_cv_text", "")
-    })
+    
+    # Check if there are any active profiles. If not, make this one active by default.
+    active_chk = conn.execute("SELECT COUNT(*) FROM profile WHERE is_active = 1").fetchone()[0]
+    is_active = 1 if active_chk == 0 else data.get("is_active", 0)
+
+    profile_id = data.get("id")
+    
+    if profile_id:
+        # Update existing profile
+        conn.execute("""
+            UPDATE profile SET
+                name = :name,
+                skills = :skills,
+                experience_years = :experience_years,
+                target_roles = :target_roles,
+                location_pref = :location_pref,
+                salary_min = :salary_min,
+                career_goals = :career_goals,
+                raw_cv_text = :raw_cv_text,
+                is_active = :is_active,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = :id
+        """, {
+            "id": profile_id,
+            "name": data.get("name", "User"),
+            "skills": json.dumps(data.get("skills", [])),
+            "experience_years": data.get("experience_years", 0),
+            "target_roles": json.dumps(data.get("target_roles", [])),
+            "location_pref": data.get("location_pref", "Jakarta"),
+            "salary_min": data.get("salary_min", 0),
+            "career_goals": data.get("career_goals", ""),
+            "raw_cv_text": data.get("raw_cv_text", ""),
+            "is_active": is_active
+        })
+    else:
+        # Insert new profile
+        cur = conn.execute("""
+            INSERT INTO profile (name, skills, experience_years, target_roles,
+                                 location_pref, salary_min, career_goals, raw_cv_text, is_active, updated_at)
+            VALUES (:name, :skills, :experience_years, :target_roles,
+                    :location_pref, :salary_min, :career_goals, :raw_cv_text, :is_active, CURRENT_TIMESTAMP)
+        """, {
+            "name": data.get("name", "User"),
+            "skills": json.dumps(data.get("skills", [])),
+            "experience_years": data.get("experience_years", 0),
+            "target_roles": json.dumps(data.get("target_roles", [])),
+            "location_pref": data.get("location_pref", "Jakarta"),
+            "salary_min": data.get("salary_min", 0),
+            "career_goals": data.get("career_goals", ""),
+            "raw_cv_text": data.get("raw_cv_text", ""),
+            "is_active": is_active
+        })
+        profile_id = cur.lastrowid
+
+    conn.commit()
+    conn.close()
+    return profile_id
+
+
+def set_active_profile(profile_id: int):
+    conn = get_conn()
+    conn.execute("UPDATE profile SET is_active = 0")
+    conn.execute("UPDATE profile SET is_active = 1 WHERE id = ?", (profile_id,))
     conn.commit()
     conn.close()
 
 
-# ── Jobs ─────────────────────────────────────────────────────────────────────
+def get_all_profiles() -> List[Dict]:
+    conn = get_conn()
+    rows = conn.execute("SELECT * FROM profile ORDER BY updated_at DESC").fetchall()
+    conn.close()
+    
+    profiles = []
+    for row in rows:
+        d = dict(row)
+        d["skills"] = json.loads(d.get("skills", "[]"))
+        d["target_roles"] = json.loads(d.get("target_roles", "[]"))
+        profiles.append(d)
+    return profiles
+
+
+def delete_profile(profile_id: int):
+    """Remove a profile. Reassigns active to the most recently updated remaining profile if needed."""
+    conn = get_conn()
+    was_active = conn.execute("SELECT is_active FROM profile WHERE id = ?", (profile_id,)).fetchone()
+    conn.execute("DELETE FROM profile WHERE id = ?", (profile_id,))
+    conn.commit()
+    if was_active and was_active["is_active"]:
+        remaining = conn.execute("SELECT id FROM profile ORDER BY updated_at DESC LIMIT 1").fetchone()
+        if remaining:
+            conn.execute("UPDATE profile SET is_active = 1 WHERE id = ?", (remaining["id"],))
+            conn.commit()
+    conn.close()
+
+
 
 def get_all_jobs(status_filter: Optional[str] = None, limit: Optional[int] = None) -> List[Dict]:
     conn = get_conn()

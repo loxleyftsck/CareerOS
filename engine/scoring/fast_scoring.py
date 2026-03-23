@@ -1,22 +1,5 @@
-print(">>> DEBUG: importing fast_scoring.py")
-# -- Industry Importance Factors ----------------------------------------------
-IMPORTANCE_FACTORS = {
-    "docker": 1.2, "kubernetes": 1.2, "sql": 1.2, "git": 1.1, "aws": 1.1,
-    "python": 1.0, "fastapi": 1.0, "ci/cd": 1.1, "linux": 1.1,
-}
-
-# -- Location Score Map --------------------------------------------------------
-LOCATION_SCORES = {
-    "jakarta": 1.00, "dki jakarta": 1.00, "south jakarta": 1.00,
-    "central jakarta": 1.00, "jakarta selatan": 1.00,
-    "bandung": 0.75, "yogyakarta": 0.70, "surabaya": 0.72,
-    "bali": 0.65, "semarang": 0.65, "medan": 0.62,
-    "remote": 0.88, "wfh": 0.88, "work from home": 0.88, "hybrid": 0.82,
-}
-
 import os
 import sys
-import json
 import numpy as np
 from typing import Dict, List, Optional
 
@@ -27,264 +10,28 @@ if PROJECT_ROOT not in sys.path:
 
 from engine.decision_framework import engine as crisp_engine
 from utils import logging_util
-logger = logging_util.get_logger(__name__)
 from storage import db
 
-def get_skill_weight(skill: str, frequencies: Dict[str, int]) -> float:
-    """Calculates weight based on demand frequency × importance factor."""
-    s_low = skill.lower().strip()
-    freq = frequencies.get(s_low, 1)
-    
-    import numpy as np
-    print("🚀 DEBUG: np import successful")
-    # Logarithmic scaling for frequency to avoid extreme outliers
-    demand_weight = np.log1p(freq) / 5.0 # Max around 1.0-2.0 for 100+ jobs
-    
-    # Foundational skills have a higher baseline importance than hype skills
-    factors = {
-        "docker": 1.2, "kubernetes": 1.2, "sql": 1.2, "git": 1.1, "aws": 1.1,
-        "python": 1.0, "fastapi": 1.0, "ci/cd": 1.1, "linux": 1.1,
-    }
-    importance = factors.get(s_low, 1.0)
-    return demand_weight * importance
+# Import from refactored modules
+from engine.scoring.utils import RUST_AVAILABLE, get_matched, get_gaps
+from engine.scoring.dimensions import (
+    compute_skill_score,
+    compute_exp_score,
+    compute_location_score,
+    compute_future_readiness,
+    compute_growth_score,
+)
+from engine.scoring.prep_advisor import (
+    get_market_pulse,
+    get_gap_advice,
+    get_counterfactuals,
+    get_similar_roles,
+)
 
+if RUST_AVAILABLE:
+    import career_rust
 
-# -- Utilities -----------------------------------------------------------------
-
-def _cosine(a: Optional[np.ndarray], b: Optional[np.ndarray]) -> float:
-    if a is None or b is None:
-        return 0.0
-    na, nb = np.linalg.norm(a), np.linalg.norm(b)
-    if na == 0 or nb == 0:
-        return 0.0
-    return float(np.dot(a, b) / (na * nb))
-
-
-def _keyword_overlap(user_skills: List[str], job_skills: List[str], user_emb: Optional[np.ndarray] = None) -> float:
-    """Hybrid keyword + semantic proximity matching."""
-    if not user_skills or not job_skills:
-        return 0.0
-    u = {s.lower().strip() for s in user_skills}
-    j = {s.lower().strip() for s in job_skills}
-    
-    exact = len(u & j)
-    
-    # -- Semantic Proximity --------------------------------------------------
-    # If the user doesn't have the exact skill, we check if they have 
-    # something 'very similar' (e.g. Flask if the job wants FastAPI)
-    semantic_prox = 0.0
-    remaining_j = j - u
-    
-    if remaining_j and user_emb is not None:
-        # Simplified proximity: if the global job fit is high, 
-        # we give a small 'domain competence' boost to missing keywords
-        from utils.embedder import encode
-        # In a production system, we'd embed every user skill individually,
-        # but here we use a heuristics-based approach for performance.
-        for missing in list(remaining_j)[:5]: # cap at 5 for speed
-            # If the user has a long list of skills, 
-            # we assume they have 'domain adjacency'
-            if len(u) > 15:
-                semantic_prox += 0.3
-            elif len(u) > 8:
-                semantic_prox += 0.15
-
-    matched = min(exact + semantic_prox, len(j))
-    return matched / len(j)
-
-
-def get_matched(u_skills: List[str], j_skills: List[str]) -> List[str]:
-    """Returns list of skills that match between user and job."""
-    u = {s.lower().strip() for s in u_skills}
-    return [s for s in j_skills if s.lower().strip() in u]
-
-
-def get_gaps(u_skills: List[str], j_skills: List[str]) -> List[str]:
-    """Returns list of skills required by job but missing from user profile."""
-    u = {s.lower().strip() for s in u_skills}
-    return [s for s in j_skills if s.lower().strip() not in u]
-
-
-# -- Scoring Dimensions --------------------------------------------------------
-
-def compute_skill_score(
-    user_emb: Optional[np.ndarray],
-    job_emb: Optional[np.ndarray],
-    user_skills: List[str],
-    job_skills: List[str],
-) -> float:
-    """50% weight: semantic similarity + proximity overlap hybrid."""
-    semantic = (_cosine(user_emb, job_emb) + 1) / 2  # shift [-1,1] → [0,1]
-    keyword = _keyword_overlap(user_skills, job_skills, user_emb)
-    
-    if user_emb is not None and job_emb is not None:
-        score = 0.60 * semantic + 0.40 * keyword
-    else:
-        score = keyword
-    return round(score * 100, 1)
-
-
-def compute_exp_score(
-    user_exp: float,
-    job_exp_min: float,
-    job_exp_max: float,
-) -> float:
-    """20% weight: experience fit — penalize over/under qualification."""
-    if job_exp_max <= 0:
-        job_exp_max = job_exp_min + 2
-    if job_exp_min <= user_exp <= job_exp_max:
-        return 100.0
-    elif user_exp < job_exp_min:
-        gap = job_exp_min - user_exp
-        return round(max(0.0, 100.0 - gap * 22), 1)
-    else:
-        gap = user_exp - job_exp_max
-        return round(max(60.0, 100.0 - gap * 8), 1)
-
-
-def compute_location_score(user_pref: str, job_location: str) -> float:
-    """15% weight: location tier match."""
-    jl = job_location.lower().strip()
-    up = user_pref.lower().strip()
-    # Remote is always a win
-    if any(k in jl for k in ("remote", "wfh", "work from home")):
-        return 88.0
-    if up in jl or jl in up:
-        return 100.0
-    for key, val in LOCATION_SCORES.items():
-        if key in jl:
-            return round(val * 100, 1)
-    return 40.0  # unknown location
-
-
-def compute_future_readiness(
-    user_skills: List[str],
-    job_skills: List[str],
-    all_frequencies: Dict[str, int]
-) -> Dict:
-    """Calculates Future Readiness based on trend alignment and demand."""
-    u = {s.lower().strip() for s in user_skills}
-    j = {s.lower().strip() for s in job_skills}
-    
-    weights = {s: get_skill_weight(s, all_frequencies) for s in j}
-    total_weight = sum(weights.values()) or 1.0
-    user_match_weight = sum(weights[s] for s in j if s in u)
-    score = (user_match_weight / total_weight) * 100
-    
-    return {
-        "score": round(score, 1),
-        "weights": weights
-    }
-
-
-def compute_growth_score(
-    user_skills: List[str],
-    job_skills: List[str],
-    sample_confidence: float
-) -> float:
-    """Calculates Growth Pathway score (15% weight)."""
-    u = {s.lower().strip() for s in user_skills}
-    j = {s.lower().strip() for s in job_skills}
-    if not j:
-        return 0.0
-    
-    matched_count = len([s for s in j if s in u])
-    skill_gap = 1.0 - (matched_count / len(j))
-    
-    # growth_score = 0.5 * (1 - skill_gap) + 0.5 * sample_confidence
-    score = 0.5 * (1.0 - skill_gap) + 0.5 * sample_confidence
-    return round(score * 100, 1)
-
-
-def get_counterfactuals(profile: Dict, job: Dict) -> List[Dict]:
-    """Simulate adding missing skills to see score impact."""
-    u_skills = set(s.lower().strip() for s in profile.get("skills", []))
-    j_skills = [s.lower().strip() for s in job.get("skills_required", [])]
-    gaps = [s for s in j_skills if s not in u_skills]
-    
-    results = []
-    # Base score for comparison (simplified internal call)
-    base_fit = _keyword_overlap(list(u_skills), j_skills) * 100
-    
-    for skill in gaps[:3]: # Only top 3 gaps for performance
-        sim_skills = list(u_skills | {skill})
-        new_fit = _keyword_overlap(sim_skills, j_skills) * 100
-        delta = new_fit - base_fit
-        if delta > 0:
-            results.append({
-                "skill": skill,
-                "delta": round(delta * 0.6, 1) # Weighted by 0.6 (job_fit_score contribution)
-            })
-    return sorted(results, key=lambda x: x["delta"], reverse=True)
-
-
-def get_similar_roles(target_job: Dict, all_jobs: List[Dict], n: int = 3) -> List[Dict]:
-    """Find top N similar roles based on skill vector overlap."""
-    t_skills = set(s.lower().strip() for s in target_job.get("skills_required", []))
-    if not t_skills:
-        return []
-        
-    similarities = []
-    for job in all_jobs:
-        if job["id"] == target_job["id"]:
-            continue
-        j_skills = set(s.lower().strip() for s in job.get("skills_required", []))
-        if not j_skills:
-            continue
-            
-        # Jaccard/Overlap as proxy for cosine similarity if embeddings missing
-        intersection = len(t_skills & j_skills)
-        union = len(t_skills | j_skills)
-        sim = intersection / union if union > 0 else 0
-        
-        similarities.append({
-            "id": job["id"],
-            "title": job["title"],
-            "company": job["company"],
-            "similarity": round(sim, 2)
-        })
-        
-    return sorted(similarities, key=lambda x: x["similarity"], reverse=True)[:n]
-
-
-# -- Coaching Layer (Gap-to-Action) ---------------------------------------------
-SKILL_RESOURCES = {
-    "kubernetes": "Learn K8s: Official Documentation, KodeKloud, or CKA certification track.",
-    "docker": "Docker Mastery on Udemy or Official Get Started guide.",
-    "python": "Fluent Python (Book) or Replit 100 Days of Code.",
-    "aws": "AWS Certified Cloud Practitioner track or AWS Skill Builder.",
-    "react": "React.dev documentation or Epic React by Kent C. Dodds.",
-    "go": "A Tour of Go or 'Learn Go with Tests'.",
-    "rust": "The Rust Programming Language (The Book).",
-    "sql": "Mode Analytics SQL Tutorial or SQLZoo.",
-    "postgresql": "Postgres Tutorial (postgresqltutorial.com).",
-    "redis": "Redis University (free courses).",
-    "kafka": "Confluent Developer courses.",
-    "terraform": "HashiCorp Learn portal.",
-}
-
-from engine.scoring.pulse import calculate_real_pulse
-
-def get_market_pulse() -> Dict:
-    """Real Connection to Market Hiring Signals (derived from latest jobs)."""
-    pulse = calculate_real_pulse()
-    pulse["message"] = f"Market is currently at {pulse['global_hiring_index']*100:.0f}% capacity. "
-    if pulse["ai_surge"] > 1.2:
-        pulse["message"] += f"🔥 AI Surge Detected: {pulse['ai_surge']}x probability boost."
-    return pulse
-
-def get_gap_advice(gaps: List[str]) -> List[Dict]:
-    """Translates missing skills into actionable learning paths."""
-    advice = []
-    for g in gaps:
-        gl = g.lower().strip()
-        resource = SKILL_RESOURCES.get(gl, "Explore community courses on Coursera/Udemy or official docs.")
-        advice.append({
-            "skill": g,
-            "action": resource,
-            "eta": "2-4 weeks focus"
-        })
-    return advice
+logger = logging_util.get_logger(__name__)
 
 # -- Decision Labels ----------------------------------------------------------
 DECISION_LABELS = {
@@ -313,17 +60,38 @@ def score_job(
     profile_emb: Optional[np.ndarray] = None,
     job_emb: Optional[np.ndarray] = None,
     rl_boost: float = 0.0,
+    precalculated_rust_ratio: Optional[float] = None,
+    context: Optional[Dict] = None,
 ) -> Dict:
     """EV-based Decision Engine: EV = P(interview) * V(career)."""
-    from engine.rl.custom_rl import engine as rl_engine
     
     u_skills = profile.get("skills", [])
     j_skills = job.get("skills_required", [])
-    freqs = db.get_skill_frequencies()
+    
+    # Use context or fetch from DB
+    if context:
+        freqs = context.get("freqs", {})
+        job_count = context.get("job_count", 0)
+        pulse = context.get("pulse", {})
+    else:
+        freqs = db.get_skill_frequencies()
+        job_count = db.count_jobs()
+        pulse = get_market_pulse()
 
-    # 1. Calculate P(interview) - The Probability
-    # Derived from technical fit + RL calibrated history
-    skill_score = compute_skill_score(profile_emb, job_emb, u_skills, j_skills)
+    # 1. Calculate Technical Fit (The Probability core)
+    if precalculated_rust_ratio is not None:
+        keyword_score = precalculated_rust_ratio
+        if profile_emb is not None and job_emb is not None:
+            # We defer to _cosine inside utils if we needed it directly, but here we just compute semantic inline
+            # Or better, we should have imported _cosine. Since we didn't, we approximate:
+            from engine.scoring.utils import _cosine
+            semantic = (_cosine(profile_emb, job_emb) + 1) / 2
+            skill_score = round((0.6 * semantic + 0.4 * keyword_score) * 100, 1)
+        else:
+            skill_score = round(keyword_score * 100, 1)
+    else:
+        skill_score = compute_skill_score(profile_emb, job_emb, u_skills, j_skills)
+        
     exp_score = compute_exp_score(
         profile.get("experience_years", 0),
         job.get("experience_min", 0),
@@ -335,13 +103,11 @@ def score_job(
     )
     
     # Determine Strategy based on Adaptive Crisp Framework
-    job_count = db.count_jobs()
     strategy = crisp_engine.decide_matching(job_count, recall_score=1.0) 
     
-    # Method C: Hybrid High-Precision Reranker simulation (O(N^2) pseudo-implementation)
+    # Method C: Hybrid High-Precision Reranker simulation
     rerank_mult = 1.0
     if strategy == "C":
-        # Simulate cross-encoder: roles with high baseline tech fit get precise recalibration boost
         if (0.6 * skill_score + 0.25 * exp_score) > 75:
               rerank_mult = 1.12
     
@@ -361,33 +127,25 @@ def score_job(
     job["growth_score"] = growth_score
     job["future_score"] = future_score
     
-    # v4.0: p_interview is base technical fit (0.0-1.0)
     p_interview = tech_fit / 100.0
-    career_value = 100.0 # Default base value for v4.0
-    saturation = 1.0     # Default saturation for v4.0
+    career_value = 100.0 
+    saturation = 1.0     
     
-    # NEW: Market Signals (Competitor Density & Warm Path)
-    # Warm Path (Referral) increases P significantly
+    # Competitor Density Penalty & Warm Paths
     if job.get("is_warm_path", False):
         p_interview = min(0.95, p_interview * 3.0) 
         
-    # Competitor Density Penalty (Saturation adjustment)
-    # If 200+ applicants, apply exponential penalty to P
     applicants = job.get("applicant_count", 0)
     if applicants > 50:
         comp_penalty = np.exp(-0.005 * (applicants - 50)) 
         p_interview *= max(0.2, comp_penalty)
 
-    # NEW: Market Pulse Integration
-    pulse = get_market_pulse()
-    p_interview *= pulse.get("global_hiring_index", 1.0) # Overall market tightening
+    p_interview *= pulse.get("global_hiring_index", 1.0)
     
-    # AI Surge Boost: if role/title implies AI/ML
     title_low = job.get("title", "").lower()
     if any(k in title_low for k in ["ai", "ml", "learning", "data"]):
         p_interview = min(0.95, p_interview * pulse.get("ai_surge", 1.0))
 
-    # Corrected EV: EV = P * V * Saturation
     ev = p_interview * career_value * saturation
     
     # 4. Confidence (Data Quality)
@@ -400,28 +158,68 @@ def score_job(
     # Decision
     decision = get_decision(ev, p_interview, confidence)
 
+    # -- Generate Structured Application Prep --
+    application_prep = []
+    
+    if matched:
+        top_matches = ", ".join(matched[:3])
+        application_prep.append({
+            "type": "cv",
+            "action": f"Highlight your experience in {top_matches} prominently in your resume summary and recent roles."
+        })
+    else:
+        application_prep.append({
+            "type": "cv",
+            "action": "Focus on transferable skills and core competencies, as direct keyword matches are low."
+        })
+        
+    if gaps:
+        top_gaps = ", ".join(gaps[:2])
+        application_prep.append({
+            "type": "gap",
+            "action": f"Prepare an explanation or learning plan for missing experience in {top_gaps}."
+        })
+        
+    if confidence < 0.4:
+         application_prep.append({
+            "type": "strategy",
+            "action": "Job description is vague. Prepare clarifying questions about the day-to-day tech stack for the interview."
+        })
+    elif exp_score < 70:
+        application_prep.append({
+            "type": "strategy",
+            "action": "Acknowledge the experience gap but emphasize rapid learning ability and impactful past projects."
+        })
+    else:
+        application_prep.append({
+            "type": "strategy",
+            "action": "Emphasize your strong overall alignment and readiness to contribute immediately."
+        })
+
+    conf_level = "high" if confidence >= 0.7 else "medium" if confidence >= 0.4 else "low"
+    
     res_explanation = {
-        "ev_reason": f"EV {ev:.1f} = {p_interview:.1%} prob * {career_value:.0f} value (Sat: {saturation:.1f})",
-        "p_reason": "Calibrated based on technical fit and cluster interview history.",
-        "v_reason": "Growth potential + Future trend alignment.",
-        "saturation_alert": "HIGH" if saturation < 0.8 else "Low",
-        "what_if": [f"If you learn {c['skill']} -> +{c['delta']}% match" for c in get_counterfactuals(profile, job)],
+        "key_matches": matched,
+        "gaps": gaps,
+        "risk_assessment": "High saturation risk" if saturation < 0.8 else "Standard market conditions",
+        "confidence_level": conf_level,
+        "application_prep": application_prep,
         "coaching": get_gap_advice(gaps)
     }
 
-    # Flatten explanation for DB reasoning field
-    reasoning = f"{decision}: {res_explanation['ev_reason']}. {res_explanation['p_reason']}. {res_explanation['v_reason']}."
+    reasoning = f"{decision}. Confidence: {conf_level}. Gaps: {len(gaps)}. Matched: {len(matched)}."
 
     return {
         "job_id": job.get("id"),
         "title": job.get("title", ""),
         "company": job.get("company", ""),
-        "ev": round(ev, 2),
-        "p_interview": round(p_interview, 3),
-        "career_value": round(career_value, 1),
         "match_score": tech_fit, 
+        "match_confidence": round(confidence * 100, 1),
+        "ev": round(ev, 2), 
+        "p_interview": round(p_interview, 3), 
+        "career_value": round(career_value, 1),
         "confidence_score": round(confidence, 2),
-        "confidence": round(confidence, 2), # Compatibility with current db.py
+        "confidence": round(confidence, 2), 
         "saturation_factor": round(saturation, 2),
         "breakdown": {
             "skill_match": skill_score,
@@ -429,7 +227,7 @@ def score_job(
             "location_match": location_score,
             "future_readiness": future_score,
             "growth_pathway": growth_score,
-            "growth_potential": growth_score # Compatibility with current db.py
+            "growth_potential": growth_score 
         },
         "explanation": res_explanation,
         "reasoning": reasoning,
@@ -437,6 +235,7 @@ def score_job(
         "decision": decision,
         "gaps": gaps,
         "matched_skills": matched,
+        "application_prep": application_prep,
         "requires_manual_review": ev >= 20 and confidence < 0.5
     }
 
@@ -449,18 +248,31 @@ def rank_jobs(
     rl_boosts: Optional[Dict[int, float]] = None,
 ) -> List[Dict]:
     """Rank all jobs by Expected Value (EV)."""
-    results = [
-        score_job(
+    bulk_rust_scores = {}
+    if RUST_AVAILABLE:
+        all_j_skills = [j.get("skills_required", []) for j in jobs]
+        rust_ratios = career_rust.bulk_score_keywords(profile.get("skills", []), all_j_skills)
+        bulk_rust_scores = {jobs[i]["id"]: rust_ratios[i] for i in range(len(jobs))}
+
+    context = {
+        "freqs": db.get_skill_frequencies(),
+        "job_count": db.count_jobs(),
+        "pulse": get_market_pulse()
+    }
+
+    results = []
+    for job in jobs:
+        r = score_job(
             profile, 
             job, 
             profile_emb, 
             job_embeddings.get(job.get("id")) if job_embeddings else None, 
-            rl_boosts.get(job.get("id"), 0.0) if rl_boosts else 0.0
+            rl_boosts.get(job.get("id"), 0.0) if rl_boosts else 0.0,
+            precalculated_rust_ratio=bulk_rust_scores.get(job.get("id")),
+            context=context
         )
-        for job in jobs
-    ]
+        results.append(r)
     
-    # Fairness + Similarity logic remains same but uses EV
     for r in results:
         target_job = next((j for j in jobs if j["id"] == r["job_id"]), None)
         if target_job:

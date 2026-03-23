@@ -5,7 +5,12 @@ Displays scored, ranked job cards with breakdown and feedback buttons.
 
 import streamlit as st
 import plotly.graph_objects as go
-from core import db, antigravity, rl_engine
+from storage import db
+from engine.scoring import fast_scoring as antigravity
+try:
+    from engine.rl.custom_rl import engine as rl_engine
+except Exception:
+    rl_engine = None
 
 # Try to import embedder (needs sentence-transformers installed)
 try:
@@ -135,7 +140,7 @@ if run_analysis or "ranked_results" not in st.session_state:
                 st.toast(f"⚠️ Embedding skipped: {e}", icon="⚠️")
 
         # Get RL boosts
-        rl_boosts = rl_engine.get_rl_boosts(jobs, profile)
+        rl_boosts = rl_engine.get_rl_boosts(jobs, profile) if rl_engine else {}
 
         # Rank jobs
         ranked = antigravity.rank_jobs(profile, jobs, profile_emb, job_embeddings, rl_boosts)
@@ -214,8 +219,18 @@ else:
                         gap_chips = " ".join(f'<span class="chip-gap">{g}</span>' for g in result["gaps"])
                         st.markdown(gap_chips, unsafe_allow_html=True)
 
+                    # v4.0.11 Application Prep Plan
+                    prep = result.get("application_prep", [])
+                    if prep:
+                        st.markdown('<p class="section-title">🎯 Application Prep Plan</p>', unsafe_allow_html=True)
+                        for step in prep:
+                            icon = {"cv": "📄", "gap": "⚠️", "strategy": "♟️"}.get(step.get("type"), "•")
+                            st.markdown(f"{icon} {step['action']}")
+
+                    # v4.0 Match Confidence
+                    conf_pct = result.get("match_confidence", round(result.get("confidence", 0) * 100, 1))
                     st.markdown('<p class="section-title">🤖 CARL-DTN</p>', unsafe_allow_html=True)
-                    st.caption(f"RL utility boost: `{result['rl_utility']:.3f}` · confidence: `{result['confidence']:.2f}`")
+                    st.caption(f"Match confidence: `{conf_pct}%` · EV: `{result.get('ev', 0):.2f}`")
 
                     if job.get("url"):
                         st.link_button("🔗 Open Job Listing", job["url"])
@@ -226,21 +241,24 @@ else:
                 if st.button("✅ Applied", key=f"apply_{result['job_id']}_{i}"):
                     db.record_feedback(result["job_id"], "apply", 2.0)
                     db.update_job_status(result["job_id"], "applied")
-                    rl_engine.update(job, profile, "apply")
-                    st.toast(f"Marked as Applied! +2 reward → RL updated 🎓")
+                    if rl_engine:
+                        rl_engine.update(job, profile, "apply")
+                    st.toast(f"Marked as Applied! +2 reward")
                     st.session_state.pop("ranked_results", None)
                     st.rerun()
             with fb_col2:
                 if st.button("👍 Interested", key=f"int_{result['job_id']}_{i}"):
                     db.record_feedback(result["job_id"], "interest", 1.0)
                     db.update_job_status(result["job_id"], "saved")
-                    rl_engine.update(job, profile, "interest")
-                    st.toast("Saved as Interested! +1 reward 🎯")
+                    if rl_engine:
+                        rl_engine.update(job, profile, "interest")
+                    st.toast("Saved as Interested! +1 reward")
                     st.rerun()
             with fb_col3:
                 if st.button("👎 Skip", key=f"skip_{result['job_id']}_{i}"):
                     db.record_feedback(result["job_id"], "skip", -1.0)
-                    rl_engine.update(job, profile, "skip")
+                    if rl_engine:
+                        rl_engine.update(job, profile, "skip")
                     st.toast("Skipped. −1 reward → similar jobs ranked lower.")
                     st.rerun()
             with fb_col4:

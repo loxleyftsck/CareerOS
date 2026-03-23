@@ -11,6 +11,9 @@ if PROJECT_ROOT not in sys.path:
 from storage import db
 from engine.decision_framework import engine as crisp_engine
 
+from functools import lru_cache
+
+@lru_cache(maxsize=1)
 def calculate_real_pulse(decision_scope: str = "skill_investment"):
     """Analyzes the local job database to detect 'Surges' logic."""
     print(f"[#] Analyzing Market Pulse (Scope: {decision_scope})...")

@@ -3,14 +3,33 @@ pages/profile.py — User Profile Builder
 """
 
 import streamlit as st
-from core import db
-from agents import cv_parser
+from storage import db
 
 st.title("👤 My Profile")
 st.caption("Fill this manually, or upload your CV to auto-fill.")
 st.divider()
 
-# Load existing profile
+# ── Profile Switcher (v4.0.9) ────────────────────────────────────────
+all_profiles = db.get_all_profiles()
+
+if len(all_profiles) > 1:
+    st.markdown("#### 🔄 Active Profile")
+    profile_options = {p["id"]: f"{p['name']} ({len(p['skills'])} skills)" for p in all_profiles}
+    active_id = next((p["id"] for p in all_profiles if p.get("is_active")), all_profiles[0]["id"])
+    selected_id = st.radio(
+        "Select active profile for job matching:",
+        options=list(profile_options.keys()),
+        format_func=lambda x: profile_options[x],
+        index=list(profile_options.keys()).index(active_id),
+        horizontal=True,
+    )
+    if selected_id != active_id:
+        db.set_active_profile(selected_id)
+        st.toast("✅ Active profile switched!", icon="🔄")
+        st.rerun()
+    st.divider()
+
+# Load existing profile (active one)
 profile = db.get_profile()
 
 # ── CV Upload ────────────────────────────────────────────────────────────────
@@ -21,6 +40,7 @@ with st.expander("📄 Auto-fill from CV (PDF or DOCX)", expanded=False):
         if st.button("Extract Data", type="primary"):
             with st.spinner("Parsing CV..."):
                 try:
+                    from agents import cv_parser
                     bytes_data = uploaded_file.getvalue()
                     if uploaded_file.name.endswith('.pdf'):
                         cv_text = cv_parser.extract_text_pdf(bytes_data)

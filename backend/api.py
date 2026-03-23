@@ -127,8 +127,8 @@ async def upload_cv(file: UploadFile = File(...)):
     try:
         profile_data = cv_parser.parse(file_path)
         
-        # Save to DB
-        db.save_profile({
+        # Save to DB (Creates a new profile)
+        profile_id = db.save_profile({
             "name": profile_data["name"],
             "skills": profile_data["skills"],
             "experience_years": profile_data["experience_years"],
@@ -137,15 +137,45 @@ async def upload_cv(file: UploadFile = File(...)):
         
         return {
             "message": "CV uploaded and parsed successfully",
+            "profile_id": profile_id,
             "profile": profile_data
         }
     except Exception as e:
         logger.error(f"CV Parsing failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        # Optionally delete temp file
-        # if os.path.exists(file_path): os.remove(file_path)
         pass
+
+# ── Multi-Profile Endpoints (v4.0.9) ─────────────────────────────────────────
+
+@app.get("/profiles", summary="List all saved profiles")
+def list_profiles():
+    profiles = db.get_all_profiles()
+    return {"profiles": profiles, "count": len(profiles)}
+
+@app.post("/profiles/{profile_id}/activate", summary="Switch active profile")
+def activate_profile(profile_id: int):
+    profile = db.get_profile(profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail=f"Profile {profile_id} not found")
+    db.set_active_profile(profile_id)
+    return {"message": f"Profile {profile_id} ({profile['name']}) is now active"}
+
+@app.delete("/profiles/{profile_id}", summary="Delete a profile")
+def remove_profile(profile_id: int):
+    profile = db.get_profile(profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail=f"Profile {profile_id} not found")
+    db.delete_profile(profile_id)
+    return {"message": f"Profile {profile_id} deleted"}
+
+@app.get("/profiles/active", summary="Get currently active profile")
+def get_active_profile():
+    profile = db.get_profile()
+    if not profile:
+        raise HTTPException(status_code=404, detail="No active profile")
+    return profile
+
 
 if __name__ == "__main__":
     db.init_db()

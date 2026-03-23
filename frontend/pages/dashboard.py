@@ -3,8 +3,9 @@ pages/dashboard.py — CareerOS Home Dashboard
 """
 
 import streamlit as st
-from core import db
-from agents import clawbot
+from storage import db
+
+from engine.scoring.prep_advisor import get_market_pulse
 
 st.title("🚀 CareerOS")
 st.markdown("##### *AI-powered job matching engine — find your next role faster*")
@@ -12,10 +13,14 @@ st.divider()
 
 # ── One-time mock data load ──────────────────────────────────────────────────
 if "mock_loaded" not in st.session_state:
-    inserted = clawbot.load_mock_data()
+    try:
+        from agents import clawbot
+        inserted = clawbot.load_mock_data()
+        if inserted > 0:
+            st.toast(f"✅ Clawbot loaded {inserted} fresh job listings!", icon="🤖")
+    except Exception:
+        pass
     st.session_state["mock_loaded"] = True
-    if inserted > 0:
-        st.toast(f"✅ Clawbot loaded {inserted} fresh job listings!", icon="🤖")
 
 # ── Stats row ────────────────────────────────────────────────────────────────
 profile = db.get_profile()
@@ -85,9 +90,22 @@ with col_right:
 
 st.divider()
 
+# ── Market Pulse ─────────────────────────────────────────────────────────────
+try:
+    pulse = get_market_pulse()
+    ai_surge = pulse.get("ai_surge", 1.0)
+    hiring_idx = round(pulse.get("global_hiring_index", 1.0) * 100, 1)
+    pm_col1, pm_col2 = st.columns(2)
+    pm_col1.metric("🌐 Hiring Market", f"{hiring_idx}%", help="Global hiring activity index")
+    pm_col2.metric("🔥 AI Surge", f"×{ai_surge:.2f}", delta="Active" if ai_surge > 1.2 else "Stable")
+except Exception:
+    pass
+
+st.divider()
+
 # ── Quick actions ────────────────────────────────────────────────────────────
 st.markdown("#### ⚡ Quick Actions")
-qa1, qa2, qa3 = st.columns(3)
+qa1, qa2, qa3, qa4 = st.columns(4)
 with qa1:
     if st.button("📥 Add a job listing", use_container_width=True):
         st.switch_page("pages/add_jobs.py")
@@ -97,3 +115,6 @@ with qa2:
 with qa3:
     if st.button("📋 Open Job Tracker", use_container_width=True):
         st.switch_page("pages/tracker.py")
+with qa4:
+    if st.button("📊 View Report", use_container_width=True):
+        st.switch_page("pages/reports.py")
