@@ -146,6 +146,21 @@ async def upload_cv(file: UploadFile = File(...)):
     finally:
         pass
 
+# ── Interview Coach Endpoint (v5.0) ──────────────────────────────────────────
+
+@app.get("/coach", summary="Generate interview prep questions for a job")
+def get_coaching_session(job_id: int):
+    """Returns gap-based interview questions for the given job vs. active profile."""
+    from engine.agents.interview_coach import coach_for_job
+    profile = db.get_profile()
+    if not profile:
+        raise HTTPException(status_code=404, detail="No active profile")
+    job = db.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    return coach_for_job(job, profile)
+
+
 # ── Multi-Profile Endpoints (v4.0.9) ─────────────────────────────────────────
 
 @app.get("/profiles", summary="List all saved profiles")
